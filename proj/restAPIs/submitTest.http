@@ -1,0 +1,12 @@
+POST http://localhost:5000/submit/59d69dc2-15b5-4fd2-889d-184057c496bf
+Content-Type: application/json
+
+{
+  "answers": [
+    { "id": 5, "answer": "Blue" },
+    { "id": 1, "answer": "B" },
+    { "id": 7, "answer": "Paris" },
+    { "id": 6, "answer": "Oxygen" },
+    { "id": 9, "answer": "7" }
+  ]
+}

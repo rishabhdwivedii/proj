@@ -1,0 +1,156 @@
+// index.js
+const express = require("express");
+const xlsx = require("xlsx");
+const path = require("path");
+const fs = require("fs");
+const { v4: uuidv4 } = require("uuid"); // for unique test IDs
+
+const app = express();
+app.use(express.json());
+
+// Path to your Excel file
+const filePath = path.join(__dirname, "temp-assessment.xlsx");
+// Path to store test sessions
+const testsFilePath = path.join(__dirname, "tests.json");
+
+// Helper function to read all problems from Excel
+function getAllProblems() {
+  const workbook = xlsx.readFile(filePath);
+  const sheetName = workbook.SheetNames[0];
+  return xlsx.utils.sheet_to_json(workbook.Sheets[sheetName]);
+}
+
+// Helper to write data back to Excel
+function writeProblemsToExcel(data) {
+  const worksheet = xlsx.utils.json_to_sheet(data);
+  const workbook = xlsx.utils.book_new();
+  xlsx.utils.book_append_sheet(workbook, worksheet, "Sheet1");
+  xlsx.writeFile(workbook, filePath);
+}
+
+// Helper to read/write test data
+function getAllTests() {
+  if (!fs.existsSync(testsFilePath)) return [];
+  const raw = fs.readFileSync(testsFilePath);
+  return JSON.parse(raw);
+}
+function saveAllTests(tests) {
+  fs.writeFileSync(testsFilePath, JSON.stringify(tests, null, 2));
+}
+
+// Endpoint to get all problems
+app.get("/data", (req, res) => {
+  try {
+    const data = getAllProblems();
+    res.json(data);
+  } catch (error) {
+    console.error("Error reading Excel file:", error);
+    res.status(500).json({ error: "Failed to read Excel file" });
+  }
+});
+
+// Endpoint to get 5 random problems
+app.get("/random-problems", (req, res) => {
+  try {
+    const data = getAllProblems();
+    if (data.length < 5) {
+      return res.status(400).json({ error: "Not enough problems in Excel file" });
+    }
+
+    const shuffled = data.sort(() => 0.5 - Math.random());
+    const selected = shuffled.slice(0, 5);
+
+    res.json(selected);
+  } catch (error) {
+    console.error("Error fetching random problems:", error);
+    res.status(500).json({ error: "Failed to fetch random problems" });
+  }
+});
+
+// Add new problem to Excel
+app.post("/add-problem", (req, res) => {
+  try {
+    const newProblem = req.body;
+    const requiredFields = ["Problem", "Description", "Option A", "Option B", "Option C", "Option D", "Correct answer"];
+
+    for (const field of requiredFields) {
+      if (!newProblem[field]) {
+        return res.status(400).json({ error: `Missing field: ${field}` });
+      }
+    }
+
+    const existingData = fs.existsSync(filePath) ? getAllProblems() : [];
+    existingData.push(newProblem);
+    writeProblemsToExcel(existingData);
+
+    res.json({ message: "✅ Problem added successfully", newProblem });
+  } catch (error) {
+    console.error("Error adding problem:", error);
+    res.status(500).json({ error: "Failed to add problem" });
+  }
+});
+
+// Endpoint to create a test
+app.post("/create-test", (req, res) => {
+  try {
+    const { email } = req.body;
+    if (!email) {
+      return res.status(400).json({ error: "Email is required" });
+    }
+
+    const problems = getAllProblems();
+    if (problems.length < 5) {
+      return res.status(400).json({ error: "Not enough problems to create a test" });
+    }
+
+    const shuffled = problems.sort(() => 0.5 - Math.random());
+    const selected = shuffled.slice(0, 5);
+
+    const tests = getAllTests();
+    const id = uuidv4();
+
+    const newTest = {
+      id,
+      email,
+      questions: selected,
+      createdAt: new Date().toISOString(),
+    };
+
+    tests.push(newTest);
+    saveAllTests(tests);
+
+    const testLink = `http://localhost:5000/test/${id}`;
+    res.json({ message: "✅ Test created successfully", link: testLink });
+  } catch (error) {
+    console.error("Error creating test:", error);
+    res.status(500).json({ error: "Failed to create test" });
+  }
+});
+
+//  Endpoint to fetch a specific test by ID
+app.get("/test/:id", (req, res) => {
+  try {
+    const { id } = req.params;
+    const tests = getAllTests();
+    const test = tests.find((t) => t.id === id);
+
+    if (!test) {
+      return res.status(404).json({ error: "Test not found" });
+    }
+
+    res.json({ email: test.email, questions: test.questions });
+  } catch (error) {
+    console.error("Error fetching test:", error);
+    res.status(500).json({ error: "Failed to fetch test" });
+  }
+});
+
+// Root route
+app.get("/", (req, res) => {
+  res.send(" Server is up and running!");
+});
+
+const PORT = process.env.PORT || 5000;
+app.listen(PORT, () =>
+  console.log(` Server running on http://localhost:${PORT}`)
+);

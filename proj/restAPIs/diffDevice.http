@@ -1,0 +1,2 @@
+GET http://localhost:5000/test/2e93bc75-f828-46a5-b46c-f33d14bd4d18
+X-Device-Id: 1234
